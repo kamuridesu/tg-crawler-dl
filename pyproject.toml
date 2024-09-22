@@ -1,0 +1,15 @@
+[project]
+name = "link-downloader-tg"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "aiogram>=3.13.1",
+    "aiohttp>=3.10.5",
+    "filetype>=1.2.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
