@@ -10,10 +10,9 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
 from aiogram.types import BufferedInputFile, Message
-from aiogram.utils.media_group import MediaGroupBuilder
 
 from browser import fetch_page
-from config import TOKEN
+from config import TELEGRAM_API_SERVER, TOKEN
 from utils import FileInfo, MediaBuilder, Progress, fetch_url
 
 dp = Dispatcher()
@@ -36,7 +35,7 @@ async def main_handler(message: Message) -> None:
     urls = []
     if data := WAITING_REPLY_ID.get(f"{message.chat.id}:{message.from_user.id}"):
         WAITING_REPLY_ID.pop(f"{message.chat.id}:{message.from_user.id}")
-        extensions = [x.strip() for x in message.text.split(",")]
+        extensions = [x.strip().lower() for x in message.text.split(",")]
         urls = parse_find_url(data.content, extensions)
         urls = [parse_url(data.origin, x) for x in urls]
         if len(urls) < 1:
@@ -69,8 +68,9 @@ async def main_handler(message: Message) -> None:
 
 async def process_all_urls(message: Message, urls: list[str]):
     media_group = MediaBuilder()
-    msg = await message.reply(f"Downloading... 0.0%")
-    pg = Progress(msg, total=len(urls))
+    msg = await message.reply(f"Downloading...")
+    pg = Progress(msg)
+    await pg.start()
     for index, url in enumerate(urls):
         task = asyncio.create_task(process_url(message, index, url, media_group, pg))
         task.add_done_callback(lambda t: TASKS.remove(t))
@@ -83,11 +83,16 @@ async def process_all_urls(message: Message, urls: list[str]):
 
 
 async def process_url(
-    message: Message, index: int, url: str, media_group: list, progress: Progress
+    message: Message,
+    index: int,
+    url: str,
+    media_group: MediaBuilder,
+    progress: Progress,
 ):
+    pd = progress.register(index)
     try:
-        file = await fetch_url(url)
-
+        file = await fetch_url(url, pd.update)
+        pd.progress = 100
         if (len(file.content)) == 0:
             return
 
@@ -108,15 +113,13 @@ async def process_url(
 
         async with LOCK:
             func(media=BufferedInputFile(file.content, file.filename))
-
             if len(media_group) == 10:
                 await send_media_group(message, media_group)
                 media_group.clear()
-            await progress.update()
 
     except TypeError as e:
-        print(e)
-        await message.answer("URL not recognized! Try other one.")
+        print(f"Error: {e}, URL: {url}")
+        await message.reply(f"Failed to download from {url}")
 
 
 async def send_media_group(message, media_group):
@@ -124,11 +127,15 @@ async def send_media_group(message, media_group):
         await message.answer_media_group(media_group.build())
     except Exception as e:
         print(e)
-        await message.answer("failed to send media!")
+        await message.answer("Failed to send media!")
 
 
 async def main() -> None:
-    bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    bot = Bot(
+        token=TOKEN,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+        session=TELEGRAM_API_SERVER,
+    )
     await dp.start_polling(bot)
 
 

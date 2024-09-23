@@ -1,3 +1,4 @@
+import asyncio
 import time
 from dataclasses import dataclass
 from random import randint
@@ -25,38 +26,48 @@ class FileInfo:
     origin: str | None = None
 
 
+@dataclass
+class ProgressData:
+    id: int
+    progress: int = 0
+
+    def update(self, count: int, total_size: int):
+        self.progress = 100 * count / float(total_size)
+
+
 class Progress:
-    """Updates the message with the percentage downloaded"""
-
-    def __init__(self, message: Message, total: int = 0):
+    def __init__(self, message: Message):
         self.message = message
-        self.enabled = True
-        self.message_to_send = "Downloading... "
-        self.start_time = time.perf_counter()
-        self.__last_message = ""
-        self.counter = 0
-        self.total = total
+        self.__last_message_body = ""
+        self.progress_data: list[ProgressData] = []
+        self.task = None
 
-    async def progress(self, count: int | float, total: int | float, message: str = ""):
-        if message == "":
-            message = self.message_to_send
-        """Updates the message with the download percentage every 10 seconds"""
-        total_time = time.perf_counter() - self.start_time
-        if total_time > 10 or total_time < 1:
-            if total_time > 10:
-                self.start_time = time.perf_counter()
-            percents = round(100 * count / float(total), 1)
-            message = f"{message} {percents:.1f}%"
-            if message != self.__last_message:
-                await self.message.edit_text(message)
-                self.__last_message = message
+    def register(self, id: int):
+        pd = ProgressData(id)
+        self.progress_data.append(pd)
+        return pd
 
-    async def update(self, message: str = ""):
-        self.counter += 1
-        await self.progress(self.counter, self.total, message)
+    async def generate(self):
+        body = ""
+        for file in self.progress_data:
+            if file.progress == 100:
+                continue
+            body += f"File {file.id}: {file.progress:.1f}%\n"
+        if self.__last_message_body != body:
+            await self.message.edit_text(body)
+            self.__last_message_body = body
+
+    async def __start(self):
+        while True:
+            await self.generate()
+            await asyncio.sleep(10)
+
+    async def start(self):
+        self.task = asyncio.Task(self.__start())
 
     async def finish(self):
         await self.message.delete()
+        self.task.cancel()
 
 
 def generate_random_id(digits: str = 6):
@@ -70,6 +81,7 @@ async def fetch_url(url: str, progress=None):
     async with ClientSession() as session:
         async with session.get(url) as response:
             if response.status != 200:
+                print(f"[WARN] Erro fetching URL {url}, status is {response.status}")
                 raise TypeError("Can't fetch URL")
             filename = f"{generate_random_id()}"
             size = 0
@@ -83,13 +95,9 @@ async def fetch_url(url: str, progress=None):
                 )
             if "Content-Length" in response.headers:
                 size = int(response.headers["Content-Length"])
-                while True:
-                    chunk = await response.content.read(2048)
-                    if not chunk:
-                        break
+                async for chunk in response.content.iter_chunked(10192):
                     content += chunk
-                    if progress is not None:
-                        await progress(len(content), size)
+                    progress(len(content), size)
             else:
                 print("Warn, file doesn't support progress")
                 content = await response.read()

@@ -5,8 +5,8 @@ from bs4 import BeautifulSoup
 
 
 def parse_find_url(file: bytes | str, ext_list: list[str]) -> list[str]:
-    soup = BeautifulSoup(file, "html.parser")
-    ext_pattern = "|".join([f"\.{re.escape(ext)}$" for ext in ext_list])
+    soup = BeautifulSoup(file.lower(), "html.parser")
+    ext_pattern = "|".join([f"\.{re.escape(ext)}" for ext in ext_list])
     pattern = re.compile(ext_pattern, re.IGNORECASE)
     urls = []
     for tag in soup.find_all(True):
@@ -20,7 +20,7 @@ def parse_find_url(file: bytes | str, ext_list: list[str]) -> list[str]:
 
 
 def parse_url(origin: str, url_path: str) -> str:
-    if url_path.startswith("http://") and url_path.startswith("https://"):
+    if url_path.startswith("http://") or url_path.startswith("https://"):
         return url_path
     base = urlparse(origin)
     if not url_path.startswith("/"):
