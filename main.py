@@ -36,23 +36,26 @@ async def main_handler(message: Message) -> None:
     if data := WAITING_REPLY_ID.get(f"{message.chat.id}:{message.from_user.id}"):
         WAITING_REPLY_ID.pop(f"{message.chat.id}:{message.from_user.id}")
         extensions = [x.strip().lower() for x in message.text.split(",")]
-        urls = parse_find_url(data.content, extensions)
-        urls = [parse_url(data.origin, x) for x in urls]
+        urls = [
+            parse_url(data.origin, x) for x in parse_find_url(data.content, extensions)
+        ]
         if len(urls) < 1:
             message = await message.reply(
                 "Oopsie, looks like I wasn't able to find any matches! I'll try again this time with more effort 😚"
             )
             new_content = fetch_page(data.origin)
-            with open("nc.html", "w", encoding="utf-8") as f:
-                f.write(new_content)
-            urls = parse_find_url(new_content, extensions)
-            urls = [parse_url(data.origin, x) for x in urls]
+            urls = [
+                parse_url(data.origin, x)
+                for x in parse_find_url(new_content, extensions)
+            ]
             if len(urls) < 1:
                 return await message.edit_text(
                     "Sorry, I did my best but couldn't find the stuff you're looking for :("
                 )
+            await message.delete()
 
     else:
+        print(f"[INFO] New message from {message.from_user.username}: {message.text}")
         parsed = urlparse(message.text)
         if not all([parsed.scheme, parsed.netloc]):
             return await message.answer(

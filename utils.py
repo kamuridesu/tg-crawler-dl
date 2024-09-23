@@ -1,5 +1,4 @@
 import asyncio
-import time
 from dataclasses import dataclass
 from random import randint
 from typing import List
