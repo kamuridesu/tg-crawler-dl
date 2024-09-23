@@ -8,6 +8,9 @@ dependencies = [
     "aiogram>=3.13.1",
     "aiohttp>=3.10.5",
     "filetype>=1.2.0",
+    "webdriver-manager>=4.0.2",
+    "selenium>=4.25.0",
+    "beautifulsoup4>=4.12.3",
 ]
 
 [build-system]

@@ -3,12 +3,15 @@ import logging
 import sys
 import time
 from dataclasses import dataclass
-from io import BytesIO
+from browser import fetch_page
+from parser import parse_find_url, parse_url
 from random import randint
 from typing import Any, Callable
 from urllib.parse import urlparse
 
 import filetype
+from aiogram.methods.send_media_group import SendMediaGroup
+from aiogram.utils.media_group import MediaGroupBuilder
 from aiogram import Bot, Dispatcher, html
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -16,11 +19,10 @@ from aiogram.filters import CommandStart
 from aiogram.types import BufferedInputFile, InputFile, Message
 from aiohttp import ClientSession
 
-from parser import parse_find_url
 from config import TOKEN
 
 dp = Dispatcher()
-
+TASKS: set[asyncio.Task] = set()
 
 @dataclass
 class FileInfo:
@@ -28,7 +30,11 @@ class FileInfo:
     content: bytes
     mime: str
     size: int
+    origin: str | None = None
+
+
 WAITING_REPLY_ID: dict[str, FileInfo] = {}
+
 
 def generate_random_id(digits: str = 6):
     _id = ""
@@ -125,54 +131,85 @@ class Progress:
 @dp.message()
 async def main_handler(message: Message) -> None:
     urls = []
-    if (data := WAITING_REPLY_ID.get(f"{message.chat.id}:{message.from_user.id}")):
+    if data := WAITING_REPLY_ID.get(f"{message.chat.id}:{message.from_user.id}"):
         WAITING_REPLY_ID.pop(f"{message.chat.id}:{message.from_user.id}")
         extensions = [x.strip() for x in message.text.split(",")]
         urls = parse_find_url(data.content, extensions)
+        urls = [parse_url(data.origin, x) for x in urls]
+        if len(urls) < 1:
+            message = await message.reply("Oopsie, looks like I wasn't able to find any matches! I'll try again this time with more effort 😚")
+            new_content = fetch_page(data.origin)
+            with open("nc.html", "w", encoding="utf-8") as f:
+                f.write(new_content)
+            urls = parse_find_url(new_content, extensions)
+            urls = [parse_url(data.origin, x) for x in urls]
+            if len(urls) < 1:
+                return await message.edit_text("Sorry, I did my best but couldn't find the stuff you're looking for :(")
 
     else:
         parsed = urlparse(message.text)
         if not all([parsed.scheme, parsed.netloc]):
-            return await message.answer("Received message is not a valid URL. Try again.")
+            return await message.answer(
+                "Received message is not a valid URL. Try again."
+            )
         urls = [message.text]
-    
+
     if len(urls) < 1:
         return await message.answer("No files found for download.")
+    
+    return await process_all_urls(message, urls)
+
+async def process_all_urls(message, urls):
+    media_group = []
 
     for index, url in enumerate(urls):
-        try:
-            msg = await message.reply(f"Downloading file {index + 1}, please wait...")
-            progress = Progress(msg)
-            file = await fetch_url(url, progress.update)
+        task = asyncio.create_task(process_url(message, index, url, media_group))
+        task.add_done_callback(lambda t: TASKS.remove(t))
+        TASKS.add(task)
+    await asyncio.gather(*TASKS)
+    if len(media_group > 0):
+        await send_media_group(message, MediaGroupBuilder(media_group))
 
-            if file.filename.endswith(".html"):
-                await msg.edit_text("Looks like you've sent a HTML page. Please, type the extensions to download (use , as delimiter): ")
-                WAITING_REPLY_ID[f"{message.chat.id}:{message.from_user.id}"] = file
-                return
 
-            func: Callable[[BufferedInputFile, str], Any] = message.answer_document
+async def process_url(message, index, url, media_group: list):
+    try:
+        msg = await message.reply(f"Downloading file {index + 1}, please wait...")
+        progress = Progress(msg)
+        file = await fetch_url(url, progress.update)
 
-            if "image" in file.mime:
-                func = message.answer_photo
-            elif "video" in file.mime:
-                func = message.answer_video
-            if (len(file.content)) == 0:
-                await message.answer("Error: Could not download media from URL: " + url)
-                continue
-            await msg.edit_text("Trying to send file...")
-            for i in range(1):
-                try:
-                    await func(
-                        BufferedInputFile(file.content, file.filename),
-                        caption=file.filename,
-                    )
-                    await progress.finish()
-                    continue
-                except Exception:
-                    await msg.edit_text(f"Failed to send file! Retrying {i + 1}/3...")
-            await message.answer("Fail to send media, try again.")
-        except TypeError:
-            await message.answer("URL not recognized! Try other one.")
+        if (len(file.content)) == 0:
+            await message.answer("Error: Could not download media from URL: " + url)
+            return
+
+        if file.filename.endswith(".html"):
+            await msg.edit_text(
+                "Looks like you've sent a HTML page. Please, type the extensions to download (use , as delimiter): "
+            )
+            file.origin = url
+            WAITING_REPLY_ID[f"{message.chat.id}:{message.from_user.id}"] = file
+            return
+
+        func: Callable[[BufferedInputFile], Any] = media_group.add_document
+
+        if "image" in file.mime:
+            func = media_group.add_photo
+        elif "video" in file.mime:
+            func = media_group.add_video
+        
+
+        if (len(media_group) == 10):
+            await send_media_group(message, MediaGroupBuilder(media_group))
+            media_group.clear()
+    except TypeError as e:
+        print(e)
+        await message.answer("URL not recognized! Try other one.")
+
+async def send_media_group(message, media_group):
+    try:
+        await message.answer_media_group(media_group.build())
+    except Exception as e:
+        print(e)
+        await message.answer("failed to send media!")
 
 
 async def main() -> None:
