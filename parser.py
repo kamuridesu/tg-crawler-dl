@@ -1,23 +1,19 @@
-from urllib.parse import urlparse
-from bs4 import BeautifulSoup
 import re
+from urllib.parse import urlparse
+
+from bs4 import BeautifulSoup
 
 
 def parse_find_url(file: bytes | str, ext_list: list[str]) -> list[str]:
-    # Parse the HTML content
-    soup = BeautifulSoup(file, 'html.parser')
-    
-    # Create a regex pattern for the extensions
-    ext_pattern = '|'.join([f'\.{re.escape(ext)}$' for ext in ext_list])
+    soup = BeautifulSoup(file, "html.parser")
+    ext_pattern = "|".join([f"\.{re.escape(ext)}$" for ext in ext_list])
     pattern = re.compile(ext_pattern, re.IGNORECASE)
-
-    # Find all tags with attributes that may contain URLs (e.g., href, src)
     urls = []
-    for tag in soup.find_all(True):  # True finds all tags
-        for attr in ['href', 'src']:
+    for tag in soup.find_all(True):
+        for attr in ["href", "src"]:
             if tag.has_attr(attr):
                 url = tag[attr]
-                if pattern.search(url):  # Check if the URL ends with one of the extensions
+                if pattern.search(url):
                     urls.append(url)
 
     return urls
