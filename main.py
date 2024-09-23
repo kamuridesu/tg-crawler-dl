@@ -14,7 +14,7 @@ from aiogram.utils.media_group import MediaGroupBuilder
 
 from browser import fetch_page
 from config import TOKEN
-from utils import FileInfo, Progress, fetch_url, MediaBuilder
+from utils import FileInfo, MediaBuilder, Progress, fetch_url
 
 dp = Dispatcher()
 TASKS: set[asyncio.Task] = set()
@@ -82,7 +82,9 @@ async def process_all_urls(message: Message, urls: list[str]):
     await pg.finish()
 
 
-async def process_url(message: Message, index: int, url: str, media_group: list, progress: Progress):
+async def process_url(
+    message: Message, index: int, url: str, media_group: list, progress: Progress
+):
     try:
         file = await fetch_url(url)
 
@@ -111,7 +113,7 @@ async def process_url(message: Message, index: int, url: str, media_group: list,
                 await send_media_group(message, media_group)
                 media_group.clear()
             await progress.update()
-            
+
     except TypeError as e:
         print(e)
         await message.answer("URL not recognized! Try other one.")

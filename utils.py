@@ -4,10 +4,17 @@ from random import randint
 from typing import List
 
 import filetype
-from aiogram.types import Message, MessageEntity
+from aiogram.types import (
+    InputMediaAudio,
+    InputMediaDocument,
+    InputMediaPhoto,
+    InputMediaVideo,
+    Message,
+    MessageEntity,
+)
 from aiogram.utils.media_group import MediaGroupBuilder
-from aiogram.types import InputMediaAudio, InputMediaPhoto, InputMediaDocument, InputMediaVideo
 from aiohttp import ClientSession
+
 
 @dataclass
 class FileInfo:
@@ -47,7 +54,6 @@ class Progress:
     async def update(self, message: str = ""):
         self.counter += 1
         await self.progress(self.counter, self.total, message)
-
 
     async def finish(self):
         await self.message.delete()
@@ -111,7 +117,17 @@ async def fetch_url(url: str, progress=None):
 
 
 class MediaBuilder(MediaGroupBuilder):
-    def __init__(self, media: List[InputMediaAudio | InputMediaPhoto | InputMediaVideo | InputMediaDocument] | None = None, caption: str | None = None, caption_entities: List[MessageEntity] | None = None) -> None:
+    def __init__(
+        self,
+        media: (
+            List[
+                InputMediaAudio | InputMediaPhoto | InputMediaVideo | InputMediaDocument
+            ]
+            | None
+        ) = None,
+        caption: str | None = None,
+        caption_entities: List[MessageEntity] | None = None,
+    ) -> None:
         super().__init__(media, caption, caption_entities)
 
     def clear(self):
