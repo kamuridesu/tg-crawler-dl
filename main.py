@@ -131,7 +131,8 @@ async def process_url(
             file = await REQUESTER.fetch_url(url, pd.update)
         except Exception as e:
             pd.status = "Failed"
-            return message.reply(f"Failed to fetch {url}, error is {e}")
+            print(f"Fail to fetch from URL {url}, error is {e}")
+            return
         pd.progress = 100
         if (len(file.content)) == 0:
             return
