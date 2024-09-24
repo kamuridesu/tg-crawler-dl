@@ -2,7 +2,7 @@ import asyncio
 import http.cookies
 from dataclasses import dataclass
 from random import randint
-from typing import List
+from typing import List, Literal
 
 import filetype
 from aiogram.types import (
@@ -34,7 +34,7 @@ class FileInfo:
 class ProgressData:
     id: int
     progress: int = 0
-    failed: bool = False
+    status: Literal['Failed'] | Literal['Done'] | Literal['Downloading'] | None = None
 
     def update(self, count: int, total_size: int):
         self.progress = 100 * count / float(total_size)
@@ -57,10 +57,10 @@ class Progress:
         for file in self.progress_data:
             if file.progress == 100:
                 continue
-            if not file.failed:
+            if file.status is None:
                 body += f"File {file.id}: {file.progress:.1f}%\n"
-            else:
-                body += f"File {file.id}: Failed!"
+                continue
+            body += f"File {file.id}: {file.status}!"
         if self.__last_message_body != body:
             await self.message.edit_text(body)
             self.__last_message_body = body
@@ -102,7 +102,7 @@ class Request:
             except http.cookies.CookieError:
                 print(f"[ERROR] Could not set cookie {cookie}. Skipping")
 
-    async def fetch_url(self, url: str, progress=None):
+    async def fetch_url(self, url: str, progress: ProgressData | None =None):
         CHUNK_SIZE = 10192
         async with self.session.get(url, headers=DEFAULT_HEADERS) as response:
             if response.status != 200:
@@ -123,17 +123,16 @@ class Request:
                 try:
                     async for chunk in response.content.iter_chunked(CHUNK_SIZE):
                         content += chunk
-                        progress(len(content), size)
+                        progress.update(len(content), size)
                 except Exception:
+                    progress.status = "Downloading"
                     print(
                         f"[WARN] Failed to download chunks, trying to download without chunks..."
                     )
                     async with self.session.get(
                         url, headers=DEFAULT_HEADERS
                     ) as response:
-                        progress(1, 100)
                         content = await response.read()
-                        progress(100, 100)
             else:
                 print("Warn, file doesn't support progress")
                 content = await response.read()

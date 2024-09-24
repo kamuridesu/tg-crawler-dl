@@ -130,7 +130,7 @@ async def process_url(
         try:
             file = await REQUESTER.fetch_url(url, pd.update)
         except Exception as e:
-            pd.failed = True
+            pd.status = "Failed"
             return message.reply(f"Failed to fetch {url}, error is {e}")
         pd.progress = 100
         if (len(file.content)) == 0:
@@ -158,7 +158,7 @@ async def process_url(
                 media_group.clear()
 
     except TypeError as e:
-        pd.failed = True
+        pd.status = "Failed"
         print(f"Error: {e}, URL: {url}")
         await message.reply(f"Failed to download from {url}")
 
