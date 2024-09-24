@@ -1,10 +1,10 @@
 import re
 from urllib.parse import urlparse
 
+from aiogram.types import Message
 from bs4 import BeautifulSoup
 
 from utils import FileInfo
-from aiogram.types import Message
 
 
 def parse_find_url(file: bytes | str, ext_list: list[str]) -> list[str]:
@@ -37,5 +37,9 @@ async def fetch_links(message: Message, data: FileInfo):
     for tag in soup.find_all(True):
         for attr in ["href", "src"]:
             if tag.has_attr(attr):
-                msg += tag[attr] + "\n"
-    await message.answer(msg)
+                line = parse_url(data.origin, tag[attr]) + "\n"
+                if len(msg + line) > 4096:
+                    await message.reply(msg)
+                    msg = ""
+                msg += line
+    await message.reply(msg)

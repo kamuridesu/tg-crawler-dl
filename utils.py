@@ -1,4 +1,5 @@
 import asyncio
+import http.cookies
 from dataclasses import dataclass
 from random import randint
 from typing import List
@@ -13,7 +14,11 @@ from aiogram.types import (
     MessageEntity,
 )
 from aiogram.utils.media_group import MediaGroupBuilder
-from aiohttp import ClientSession
+from aiohttp import ClientSession, ClientTimeout
+
+DEFAULT_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 8_9_2; like Mac OS X) AppleWebKit/602.17 (KHTML, like Gecko)  Chrome/50.0.3965.134 Mobile Safari/603.2"
+}
 
 
 @dataclass
@@ -29,6 +34,7 @@ class FileInfo:
 class ProgressData:
     id: int
     progress: int = 0
+    failed: bool = False
 
     def update(self, count: int, total_size: int):
         self.progress = 100 * count / float(total_size)
@@ -51,7 +57,10 @@ class Progress:
         for file in self.progress_data:
             if file.progress == 100:
                 continue
-            body += f"File {file.id}: {file.progress:.1f}%\n"
+            if not file.failed:
+                body += f"File {file.id}: {file.progress:.1f}%\n"
+            else:
+                body += f"File {file.id}: Failed!"
         if self.__last_message_body != body:
             await self.message.edit_text(body)
             self.__last_message_body = body
@@ -76,9 +85,26 @@ def generate_random_id(digits: str = 6):
     return _id
 
 
-async def fetch_url(url: str, progress=None):
-    async with ClientSession() as session:
-        async with session.get(url) as response:
+class Request:
+    def __init__(self):
+        self.session = ClientSession(timeout=ClientTimeout(600))
+
+    async def __aenter__(self, *args, **kwargs):
+        return self
+
+    async def __aexit__(self, *args, **kwargs):
+        await self.session.close()
+
+    def set_cookies(self, cookies: list[dict]):
+        for cookie in cookies:
+            try:
+                self.session.cookie_jar.update_cookies(cookie)
+            except http.cookies.CookieError:
+                print(f"[ERROR] Could not set cookie {cookie}. Skipping")
+
+    async def fetch_url(self, url: str, progress=None):
+        CHUNK_SIZE = 10192
+        async with self.session.get(url, headers=DEFAULT_HEADERS) as response:
             if response.status != 200:
                 print(f"[WARN] Erro fetching URL {url}, status is {response.status}")
                 raise TypeError("Can't fetch URL")
@@ -94,9 +120,20 @@ async def fetch_url(url: str, progress=None):
                 )
             if "Content-Length" in response.headers:
                 size = int(response.headers["Content-Length"])
-                async for chunk in response.content.iter_chunked(10192):
-                    content += chunk
-                    progress(len(content), size)
+                try:
+                    async for chunk in response.content.iter_chunked(CHUNK_SIZE):
+                        content += chunk
+                        progress(len(content), size)
+                except Exception:
+                    print(
+                        f"[WARN] Failed to download chunks, trying to download without chunks..."
+                    )
+                    async with self.session.get(
+                        url, headers=DEFAULT_HEADERS
+                    ) as response:
+                        progress(1, 100)
+                        content = await response.read()
+                        progress(100, 100)
             else:
                 print("Warn, file doesn't support progress")
                 content = await response.read()
