@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import sys
-from parser import parse_find_url, parse_url
+from parser import fetch_links, parse_find_url, parse_url
 from typing import Any, Callable
 from urllib.parse import urlparse
 
@@ -35,6 +35,10 @@ async def main_handler(message: Message) -> None:
     urls = []
     if data := WAITING_REPLY_ID.get(f"{message.chat.id}:{message.from_user.id}"):
         WAITING_REPLY_ID.pop(f"{message.chat.id}:{message.from_user.id}")
+
+        if message.text == "links":
+            return await fetch_links(message, data)
+
         extensions = [x.strip().lower() for x in message.text.split(",")]
         urls = [
             parse_url(data.origin, x) for x in parse_find_url(data.content, extensions)
