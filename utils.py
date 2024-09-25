@@ -60,7 +60,7 @@ class Progress:
             if file.status is None:
                 body += f"File {file.id}: {file.progress:.1f}%\n"
                 continue
-            body += f"File {file.id}: {file.status}!"
+            body += f"File {file.id}: {file.status}"
         if self.__last_message_body != body:
             await self.message.edit_text(body)
             self.__last_message_body = body
@@ -74,7 +74,8 @@ class Progress:
         self.task = asyncio.Task(self.__start())
 
     async def finish(self):
-        await self.message.delete()
+        # await self.message.delete()
+        await self.generate()
         self.task.cancel()
 
 
@@ -103,7 +104,6 @@ class Request:
                 print(f"[ERROR] Could not set cookie {cookie}. Skipping")
 
     async def fetch_url(self, url: str, progress: ProgressData | None =None):
-        CHUNK_SIZE = 10192
         async with self.session.get(url, headers=DEFAULT_HEADERS) as response:
             if response.status != 200:
                 print(f"[WARN] Erro fetching URL {url}, status is {response.status}")
@@ -120,22 +120,9 @@ class Request:
                 )
             if "Content-Length" in response.headers:
                 size = int(response.headers["Content-Length"])
-                try:
-                    async for chunk in response.content.iter_chunked(CHUNK_SIZE):
-                        content += chunk
-                        progress.update(len(content), size)
-                except Exception:
-                    progress.status = "Downloading"
-                    print(
-                        f"[WARN] Failed to download chunks, trying to download without chunks..."
-                    )
-                    async with self.session.get(
-                        url, headers=DEFAULT_HEADERS
-                    ) as response:
-                        content = await response.read()
-            else:
-                print("Warn, file doesn't support progress")
-                content = await response.read()
+            progress.status = "Downloading"
+            content = await response.read()
+            progress.status = "Done"
             if "Content-Type" in response.headers:
                 ctype = response.headers.get("Content-Type").split("/")[1]
                 if ";" in ctype:

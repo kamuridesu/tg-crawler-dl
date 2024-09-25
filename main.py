@@ -128,7 +128,7 @@ async def process_url(
     pd = progress.register(index)
     try:
         try:
-            file = await REQUESTER.fetch_url(url, pd.update)
+            file = await REQUESTER.fetch_url(url, pd)
         except Exception as e:
             pd.status = "Failed"
             print(f"Fail to fetch from URL {url}, error is {e}")
